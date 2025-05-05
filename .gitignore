@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 .Renviron
+*.env
+*databricks.yml
+*settings.json
