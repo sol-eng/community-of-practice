@@ -1,0 +1,121 @@
+---
+title: "Exploratory Data Analysis with S3"
+format: html
+---
+
+This example shows easily accessing data stored as CSV and Parquet files in S3 using credentials already provided in Workbench and dynamically generating SQL queries from R code.
+
+Posit has created the [tidyverse](https://www.tidyverse.org/) which is a collection of some of the most widely used R packages for data science. The [dbplyr](https://dbplyr.tidyverse.org/) package is especially helpful for working with parquet files in remote sources such as S3 as it can take standard [dplyr](https://dplyr.tidyverse.org/) R code and dynamically pushed down to S3 using Arrow.
+
+# Setup
+
+## Load Packages
+
+```{r}
+#| echo: false
+#| message: false
+
+library(paws)
+library(arrow)
+library(dbplyr)
+library(tidyverse)
+library(scales)
+```
+
+## Access to a csv file in S3
+
+1. Bring directly into an R dataframe
+
+```{r}
+s3 <- paws::s3()
+s3_csv_download <- s3$get_object(
+  Bucket = "tn-example-data",
+  Key = "heart.csv"
+)
+sample_data_csv <- readr::read_csv(rawToChar(s3_csv_download$Body))
+sample_data_csv
+```
+
+2. Download the csv and load into an R dataframe
+
+```{r}
+filename = "heart_copy.csv"
+s3$download_file(
+  Bucket = "tn-example-data",
+  Key = "heart.csv",
+  Filename = filename
+)
+sample_data_2_csv <- readr::read_csv(filename)
+sample_data_2_csv
+```
+
+## Efficiently query across multiple parquet files in S3
+
+Show a sample of the parquet data structure in this bucket.
+
+```{r}
+s3$list_objects(Bucket = "tn-example-data")$Contents[[154]]
+```
+
+First open the dataset using the `arrow` package (this does not load the data into memory).
+
+```{r}
+ds <- open_dataset("s3://tn-example-data/loan_data/")
+ds
+```
+
+Preview the query
+
+```{r}
+base_query <- ds |>
+      filter(!is.na(addr_state)) |>
+      mutate(region = case_when(stringr::str_sub(zip_code, 1, 1) %in% c("8","9") ~ "West",
+                                stringr::str_sub(zip_code, 1, 1) %in% c("6","5","4") ~ "Midwest",
+                                stringr::str_sub(zip_code, 1, 1) %in% c("7","3","2") ~ "South",
+                                stringr::str_sub(zip_code, 1, 1) %in% c("1","0") ~ "East",
+                                TRUE ~ "NA")) |>
+      select(region, grade, sub_grade, loan_amnt, funded_amnt,
+             term, int_rate, emp_title, emp_length, annual_inc, loan_status,
+             purpose, title, zip_code, addr_state, dti, out_prncp, year) |>
+      mutate(office_no = stringr::str_sub(zip_code, 1, 3))
+base_query
+```
+
+## View the query plan
+
+```{r}
+show_query(base_query)
+```
+
+## Compute basic summary statistics
+
+Build on the existing query and collect the results (only at this point is data collected in memory).
+
+```{r}
+summary_stats <- base_query |>
+  filter(year > 2011) |>
+  group_by(region, grade) |>
+  summarise(out_prncp = sum(as.numeric(out_prncp), na.rm = TRUE)) |>
+  filter(region != "NA") |>
+  collect()
+
+summary_stats
+```
+
+## Graph the results
+
+
+Graph showing out_prncp per grade by region using the summary_stats data
+
+
+```{r}
+summary_stats |>
+  ggplot(aes(x = grade, y = out_prncp, fill = grade)) +
+  geom_col() +
+  facet_wrap(~region) +
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M")) +
+  labs(y = "Outstanding Principal (Millions)", x = "Loan Grade") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
