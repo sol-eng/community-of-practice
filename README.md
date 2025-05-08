@@ -5,4 +5,5 @@ useful examples of common workflow patterns that can be modified to meet the nee
 
 There is more information in each repository:
 
-1. [1-data-access-2025-04-10](1-data-access-2025-04-10/)
+1. [1-data-access-r-2025-04-10](1-data-access-r-2025-04-10/)
+2. [2-data-access-python-2025-05-08](2-data-access-python-2025-05-08/)
