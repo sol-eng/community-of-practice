@@ -109,7 +109,9 @@ WITH sub_table as (
             """
 
 with st.spinner('Loading data from Snowflake'):
-    df = pd.read_sql_query(sql_query, con)
+    with con.cursor() as cursor:
+        cursor.execute(sql_query)
+        df = cursor.fetch_pandas_all()
 
 # Bar graph of principal by grade per region
 raw_data_princ_grade = df
